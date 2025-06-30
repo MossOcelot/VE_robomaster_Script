@@ -1,6 +1,13 @@
 from abc import abstractmethod
+from queue import Queue
+import collections
+import threading
+from src.robomaster import module
 from src.robomaster import protocol
+from concurrent.futures import ThreadPoolExecutor
 
+SDK_FIRST_DDS_ID = 20
+SDK_LAST_DDS_ID = 225
 
 DDS_POSITION = "position"
 
@@ -55,3 +62,48 @@ class Subject(metaclass=_AutoRegisterSubject):
 
     def exec(self):
         self._callback(self.data_info(), *self._cb_args, **self._cb_kw)
+
+class SubHandler(collections.namedtuple("SubHandler", ("obj subject f"))):
+    __slots__ = ()
+
+class Subcriber(module.Module):
+    _host = protocol.host2byte(9, 0)
+    _sub_msg_id = SDK_FIRST_DDS_ID
+
+    def __init__(self, robot):
+        super().__init__(robot)
+        self._robot = robot
+        
+        self.msg_sub_dict = {}
+        self._publisher = collections.defaultdict(list)
+        self._msg_queue = Queue()
+        self._dispatcher_running = False
+        self._dispatcher_thread = None
+        self.excutor = ThreadPoolExecutor(max_workers=15)
+
+    def __del__(self):
+        self.stop()
+
+    def get_next_subject_id(self):
+        if self._sub_msg_id > SDK_LAST_DDS_ID:
+            self._sub_msg_id = SDK_FIRST_DDS_ID
+        else:
+            self._sub_msg_id += 1
+        return self._sub_msg_id
+
+    def start(self):
+        self._dds_mutex = threading.Lock()
+        self._client.add_handler(self, "Subscriber", self._msg_recv)
+        self._dispatcher_thread = threading.Thread(target=self._dispatch_task)
+        self._dispatcher_thread.start()
+
+    def stop(self):
+        self._dispatcher_running = False
+        if self._dispatcher_thread:
+            self._msg_queue.put(None)
+            self._dispatcher_thread.join()
+            self._dispatcher_thread = None
+        self.excutor.shutdown(wait=False)
+
+    
+        

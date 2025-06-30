@@ -99,8 +99,8 @@ class Robot(RobotBase):
     
     def _scan_modules(self):
         _chassis = chassis.Chassis(self)
-        # _dds = dds.Subscriber(self)
-        # _dds.start()
+        _dds = dds.Subscriber(self)
+        _dds.start()
         
         self._modules[_chassis.__class__.__name__] = _chassis
 
