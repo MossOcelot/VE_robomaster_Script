@@ -882,3 +882,22 @@ class ProtoPositionPush(ProtoData):
         self._action_state = buf[offset + 2]
         self._pos_x, self._pos_y, self._pos_z = struct.unpack_from('<hhh', buf, offset + 3)
         return True
+    
+class ProtoPushPeriodMsg(ProtoData):
+    _cmdset = 0x48
+    _cmdid = 0x8
+    _type = DUSS_MB_TYPE_PUSH
+
+    def __init__(self):
+        self._sub_mode = 0
+        self._msg_id = 0
+        self._data_buf = None
+
+    def pack_req(self):
+        return b''
+
+    def unpack_req(self, buf, offset=0):
+        self._sub_mode = buf[0]
+        self._msg_id = buf[1]
+        self._data_buf = buf[2:]
+        return True

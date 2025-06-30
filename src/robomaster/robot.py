@@ -1,5 +1,6 @@
 import threading
 
+from src.robomaster import dds
 from src.robomaster import action
 from src.robomaster import logger
 from src.robomaster import protocol
@@ -92,9 +93,15 @@ class Robot(RobotBase):
     def chassis(self):
         return self.get_module("Chassis")
     
+    @property
+    def dds(self):
+        return self.get_module("Subscriber")
+    
     def _scan_modules(self):
         _chassis = chassis.Chassis(self)
-
+        # _dds = dds.Subscriber(self)
+        # _dds.start()
+        
         self._modules[_chassis.__class__.__name__] = _chassis
 
     def get_module(self, name):
@@ -106,7 +113,7 @@ class Robot(RobotBase):
         if not self._client:
             logger.info("Robot: try to connection robot.")
             conn1 = self._wait_for_connection(conn_type, proto_type, sn)
-    
+
             if conn1:
                 logger.info("Robot: initialized with {0}".format(conn1))
                 self._client = client.Client(9, 6, conn1)
@@ -162,7 +169,6 @@ class Robot(RobotBase):
             logger.error("Robot: Connection Failed, Please Check Hareware Connections!!! "
                          "conn_type {0}, host {1}, target {2}.".format(conn_type, local_addr, remote_addr))
             return None
-        
         return conn.Connection(local_addr, remote_addr, protocol=proto_type)
     
     def reset(self):

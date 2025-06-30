@@ -8,7 +8,7 @@ if __name__ == '__main__':
 
     ep_chassis = ep_robot.chassis
 
-    x_val = 0.5
+    x_val = 1
     y_val = 0.3
     z_val = 30
 

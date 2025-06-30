@@ -1,3 +1,5 @@
+import struct
+from src.robomaster import dds
 from src.robomaster import logger
 from src.robomaster import module
 from src.robomaster import protocol
@@ -58,6 +60,45 @@ class ChassisMoveAction(action.Action):
         self._pos_y = util.CHASSIS_POS_Y_SET_CHECKER.proto2val(proto._pos_y)
         self._pos_z = util.CHASSIS_POS_Z_SET_CHECKER.proto2val(proto._pos_z)
         logger.info("{0} update_from_push: {1}".format(self.__class__.__name__, self))
+
+class PositionSubject(dds.Subject):
+    name = dds.DDS_POSITION
+    uid = dds.SUB_UID_MAP[name]
+    type = dds.DDS_SUB_TYPE_PERIOD
+
+    def __init__(self, cs):
+        self._position_x = 0
+        self._position_y = 0
+        self._position_z = 0
+        self._cs = cs
+        self._offset_x = 0
+        self._offset_y = 0
+        self._offset_z = 0
+        self._first_flag = True
+
+    def position(self):
+        return self._position_x, self._position_y, self._position_z
+
+    def data_info(self):
+        ''' If cs=0, use current position as coordinate origin;
+            otherwise, use the robot’s initial (power-on) position as origin. '''
+        if self._cs == 0:
+            if self._first_flag:
+                self._offset_x = self._position_x
+                self._offset_y = self._position_y
+                self._offset_z = self._position_z
+                self._first_flag = False
+            self._position_x = self._position_x - self._offset_x
+            self._position_y = self._position_y - self._offset_y
+            self._position_z = self._position_z - self._offset_z
+        self._position_x = util.CHASSIS_POS_X_SUB_CHECKER.proto2val(self._position_x)
+        self._position_y = util.CHASSIS_POS_Y_SUB_CHECKER.proto2val(self._position_y)
+        self._position_z = util.CHASSIS_POS_Z_SUB_CHECKER.proto2val(self._position_z)
+        return self._position_x, self._position_y, self._position_z
+
+    def decode(self, buf):
+        self._position_x, self._position_y, self._position_z = struct.unpack('<fff', buf)
+
 
 class Chassis(module.Module):
     _host = protocol.host2byte(3, 6)
@@ -220,3 +261,27 @@ class Chassis(module.Module):
         action = ChassisMoveAction(x, y, z, xy_speed, z_speed)
         self._action_dispatcher.send_action(action)
         return action
+    
+    # Data Subscription Interface
+    # def sub_position(self, cs=0, freq=5, callback=None, *args, **kw):
+    #     """ Subscribe to chassis position data
+
+    #     :param cs: int: [0, 1] Coordinate system selection for chassis position:
+    #                     0 = relative to current robot position
+    #                     1 = relative to initial (power-on) position
+
+    #     :param freq: enum: (1, 5, 10, 20, 50) Frequency of data updates, in Hz
+
+    #     :param callback: Function to be called when data is received. Returns a tuple (x, y, z):
+    #                     :x: Distance along the x-axis, in meters
+    #                     :y: Distance along the y-axis, in meters
+    #                     :z: Distance along the z-axis (rotation or height depending on context), in meters
+
+    #     :param args: Additional arguments for the callback
+    #     :param kw: Keyword arguments for the callback
+    #     :return: bool: Whether the subscription was successfully registered
+    #     """
+    #     sub = self._robot.dds # property dds on robot
+    #     subject = PositionSubject(cs)
+    #     subject.freq = freq
+    #     return sub.add_subject_info(subject, callback, args, kw)

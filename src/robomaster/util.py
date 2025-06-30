@@ -88,4 +88,10 @@ CHASSIS_POS_Y_SET_CHECKER = UnitChecker('chassis pos y set', default=0, start=-5
 CHASSIS_POS_Z_SET_CHECKER = UnitChecker('chassis pos z set', default=0, start=-1800, end=1800, step=0.1, decimal=0,
                                         scale=10)
 
+CHASSIS_POS_X_SUB_CHECKER = UnitChecker('chassis pos x sub', default=0, start=None, end=None, step=0.01, decimal=5)
+CHASSIS_POS_Y_SUB_CHECKER = UnitChecker('chassis pos y sub', default=0, start=None, end=None, step=0.01, decimal=5)
+CHASSIS_POS_Z_SUB_CHECKER = UnitChecker('chassis pos z sub', default=0, start=None, end=None, step=0.1, decimal=2,
+                                        scale=10)
+
 PWM_VALUE_CHECKER = UnitChecker('pwm value', default=0, start=0, end=50000, step=1, decimal=0)
+
