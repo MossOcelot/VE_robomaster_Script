@@ -901,3 +901,71 @@ class ProtoPushPeriodMsg(ProtoData):
         self._msg_id = buf[1]
         self._data_buf = buf[2:]
         return True
+
+class ProtoAddSubMsg(ProtoData):
+    _cmdset = 0x48
+    _cmdid = 0x03
+    _req_size = 7
+
+    def __init__(self):
+        self._node_id = 0
+        self._msg_id = 0
+        self._timestamp = 0
+        self._stop_when_disconnect = 0
+        self._sub_mode = 0
+        self._sub_data_num = 0
+        self._sub_uid_list = []
+        self._sub_freq = 1
+        self._pub_node_id = 0
+        self._sub_mode = 0
+        self._err_uid = 0
+
+    def pack_req(self):
+        req_size = self._req_size + self._sub_data_num * 8
+        buf = bytearray(req_size)
+        buf[0] = self._node_id
+        buf[1] = self._msg_id
+        buf[2] = (self._timestamp & 0x1) | (self._stop_when_disconnect & 0x2)
+        buf[3] = self._sub_mode
+        buf[4] = self._sub_data_num
+        for i in range(0, self._sub_data_num):
+            logger.info("ProtoSubMsg: UID:{0}".format(hex(self._sub_uid_list[i])))
+            struct.pack_into("<Q", buf, 5 + 8 * i, self._sub_uid_list[i])
+        struct.pack_into("<H", buf, 5 + 8 * self._sub_data_num, self._sub_freq)
+        logger.info("ProtoSubMsg: pack_req, num:{0}, buf {1}".format(self._sub_data_num, binascii.hexlify(buf)))
+        return buf
+
+    def unpack_resp(self, buf, offset=0):
+        self._retcode = buf[0]
+        self.pub_node_id = buf[1]
+        self.ack_sub_mode = buf[2]
+        self.ack_msg_id = buf[3]
+        self.ack_err_uid_data = buf[4] | (buf[5] << 8) | (buf[6] << 16) | (buf[7] << 24)
+        if self._retcode == 0:
+            return True
+        else:
+            return False
+        
+class ProtoDelMsg(ProtoData):
+    _cmdset = 0x48
+    _cmdid = 0x04
+    _req_size = 3
+
+    def __init__(self):
+        self._node_id = 0
+        self._msg_id = 0
+        self._sub_mode = 0
+
+    def pack_req(self):
+        buf = bytearray(self._req_size)
+        buf[0] = self._sub_mode
+        buf[1] = self._node_id
+        buf[2] = self._msg_id
+        return buf
+
+    def unpack_resp(self, buf, offset=0):
+        self._retcode = buf[0]
+        if self._retcode == 0:
+            return True
+        else:
+            return False

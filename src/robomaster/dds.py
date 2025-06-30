@@ -2,6 +2,7 @@ from abc import abstractmethod
 from queue import Queue
 import collections
 import threading
+from src.robomaster import logger
 from src.robomaster import module
 from src.robomaster import protocol
 from concurrent.futures import ThreadPoolExecutor
@@ -15,9 +16,12 @@ SUB_UID_MAP = {
     DDS_POSITION: 0x00020009eeb7cece,
 }
 
+DDS_SUB_TYPE_EVENT = 1
 DDS_SUB_TYPE_PERIOD = 0
 
 registered_subjects = {}
+dds_cmd_filter = {(0x48, 0x08)}
+
 
 class _AutoRegisterSubject(type):
     '''hepler to automatically register Proto Class whereever they're defined '''
@@ -105,5 +109,141 @@ class Subcriber(module.Module):
             self._dispatcher_thread = None
         self.excutor.shutdown(wait=False)
 
+    @classmethod
+    def _msg_recv(cls, self, msg):
+        for cmd_set, cmd_id in list(dds_cmd_filter):
+            if msg.cmdset == cmd_set and msg.cmdid == cmd_id:
+                self._msg_queue.put(msg)
+
+    def _dispatch_task(self):
+        self._dispatcher_running = True
+        logger.info("Subscriber: dispatcher_task is running...")
+        while self._dispatcher_running:
+            msg = self._msg_queue.get(1)
+            if msg is None:
+                if not self._dispatcher_running:
+                    break
+                continue
+            self._dds_mutex.acquire()
+            for name in self._publisher:
+                handler = self._publisher[name]
+                logger.debug("Subscriber: msg: {0}".format(msg))
+                proto = msg.get_proto()
+                if proto is None:
+                    logger.warning("Subscriber: _publish, msg.get_proto None, msg:{0}".format(msg))
+                    continue
+                if handler.subject.type == DDS_SUB_TYPE_PERIOD and\
+                        msg.cmdset == 0x48 and msg.cmdid == 0x08:
+                    logger.debug("Subscriber: _publish: msg_id:{0}, subject_id:{1}".format(proto._msg_id,
+                                                                                           handler.subject._subject_id))
+                    if proto._msg_id == handler.subject._subject_id:
+                        handler.subject.decode(proto._data_buf)
+                        if handler.subject._task is None:
+                            handler.subject._task = self.excutor.submit(handler.subject.exec)
+                        if handler.subject._task.done() is True:
+                            handler.subject._task = self.excutor.submit(handler.subject.exec)
+                elif handler.subject.type == DDS_SUB_TYPE_EVENT:
+                    if handler.subject.cmdset == msg.cmdset and handler.subject.cmdid == msg.cmdid:
+                        handler.subject.decode(proto._data_buf)
+                        if handler.subject._task is None:
+                            handler.subject._task = self.excutor.submit(handler.subject.exec)
+                        if handler.subject._task.done() is True:
+                            handler.subject._task = self.excutor.submit(handler.subject.exec)
+            self._dds_mutex.release()
+            logger.info("Subscriber: _publish, msg is {0}".format(msg))
+
+    def add_cmd_filter(self, cmd_set, cmd_id):
+        dds_cmd_filter.add((cmd_set, cmd_id))
+
+    def del_cmd_filter(self, cmd_set, cmd_id):
+        dds_cmd_filter.remove((cmd_set, cmd_id))
+
+    def add_subject_event_info(self, subject, callback=None, *args):
+        """
+        Add an event-based subscription
+
+        :param subject: The subject instance corresponding to the event
+        :param callback: The function to handle or parse the event data
+        """
+        # For event subscription, only a filter is added (no periodic task)
+        subject.set_callback(callback, args[0], args[1])
+        handler = SubHandler(self, subject, callback)
+        subject._task = None
+        self._dds_mutex.acquire()
+        self._publisher[subject.name] = handler
+        self._dds_mutex.release()
+        self.add_cmd_filter(subject.cmdset, subject.cmdid)
+        return True
     
-        
+    def del_subject_event_info(self, subject):
+        """
+        Remove an event-based subscription
+
+        :param subject: The subject instance corresponding to the event
+        :return: bool: Result of the operation
+        """
+        # For event subscriptions, only remove the filter (no task cancellation needed unless one exists)
+        if self._publisher[subject.name].subject._task is None:
+            pass
+        elif self._publisher[subject.name].subject._task.done() is False:
+            self._publisher[subject.name].subject._task.cancel()
+        self.del_cmd_filter(subject.cmdset, subject.cmdid)
+        return True
+
+    def add_subject_info(self, subject, callback=None, *args):
+        """
+        Request to subscribe to data (low-level interface)
+
+        :param subject: The subject instance representing the data subscription
+        :param callback: The function used to parse or handle the incoming subscribed data
+        :return: bool: Result of the request (True if successful)
+        """
+        # Add the subscription handler to the publisher registry
+        subject.set_callback(callback, args[0], args[1])
+        handler = SubHandler(self, subject, callback)
+
+        self._dds_mutex.acquire()
+        self._publisher[subject.name] = handler
+        self._dds_mutex.release()
+
+        # Construct and send a protocol message to initiate the subscription
+        proto = protocol.ProtoAddSubMsg()
+        proto._node_id = self.client.hostbyte
+        proto._sub_freq = subject.freq
+        proto._sub_data_num = 1
+        proto._msg_id = self.get_next_subject_id()
+        subject._subject_id = proto._msg_id
+        subject._task = None
+        proto._sub_uid_list.append(subject.uid)
+
+        return self._send_sync_proto(proto, protocol.host2byte(9, 0))
+
+    def del_subject_info(self, subject_name):
+        """
+        Delete a data subscription
+
+        :param subject_name: The name of the subject to unsubscribe from
+        :return: bool: Result of the unsubscription operation
+        """
+        logger.debug("Subscriber: del_subject_info: name:{0}, self._publisher:{1}".format(subject_name,
+                    self._publisher))
+
+        if subject_name in self._publisher:
+            subject_id = self._publisher[subject_name].subject._subject_id
+
+            # Cancel the task if it is still running
+            if self._publisher[subject_name].subject._task.done() is False:
+                self._publisher[subject_name].subject._task.cancel()
+
+            # Remove the subscription handler from the registry
+            self._dds_mutex.acquire()
+            del self._publisher[subject_name]
+            self._dds_mutex.release()
+
+            # Send protocol message to notify the remote end to stop publishing
+            proto = protocol.ProtoDelMsg()
+            proto._msg_id = subject_id
+            proto._node_id = self.client.hostbyte
+            return self._send_sync_proto(proto, protocol.host2byte(9, 0))
+        else:
+            logger.warning("Subscriber: failed to delete subject:", subject_name)
