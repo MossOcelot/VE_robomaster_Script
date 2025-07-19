@@ -73,7 +73,7 @@ class Client:
             return self._conn.target_addr
         except Exception:
             raise print('Robot: Can not connect to robot, check connection please.')
-        
+           
     def add_handler(self, obj, name, f):
         self._dispatcher.add_handler(obj, name, f)
 
@@ -236,6 +236,7 @@ timeout!".format(msg.receiver, msg.cmdset, msg.cmdid))
 handler".format(msg.cmdset, msg.cmdid))
         else:
             key = MsgHandler.make_dict_key(msg.cmdset, msg.cmdid)
+            logger.debug("self_hander_dict keys: {0}".format(self._handler_dict.keys()))
             if key in self._handler_dict.keys():
                 self._handler_dict[key]._req_cb(self, msg)
             else:

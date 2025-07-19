@@ -52,10 +52,8 @@ class ChassisMoveAction(action.Action):
     def update_from_push(self, proto):
         if proto.__class__ is not self._push_proto_cls:
             return
-
         self._percent = proto._percent
         self._update_action_state(proto._action_state)
-
         self._pos_x = util.CHASSIS_POS_X_SET_CHECKER.proto2val(proto._pos_x)
         self._pos_y = util.CHASSIS_POS_Y_SET_CHECKER.proto2val(proto._pos_y)
         self._pos_z = util.CHASSIS_POS_Z_SET_CHECKER.proto2val(proto._pos_z)
@@ -99,6 +97,113 @@ class PositionSubject(dds.Subject):
     def decode(self, buf):
         self._position_x, self._position_y, self._position_z = struct.unpack('<fff', buf)
 
+class AttiInfoSubject(dds.Subject):
+    name = dds.DDS_ATTITUDE
+    uid = dds.SUB_UID_MAP[name]
+    type = dds.DDS_SUB_TYPE_PERIOD
+
+    def __init__(self):
+        self._yaw = 0
+        self._pitch = 0
+        self._roll = 0
+
+    def atti_info(self):
+        return self._yaw, self._pitch, self._roll
+
+    def data_info(self):
+        return self._yaw, self._pitch, self._roll
+
+    def decode(self, buf):
+        self._yaw, self._pitch, self._roll = struct.unpack('<fff', buf)
+        self._yaw = util.CHASSIS_YAW_CHECKER.proto2val(self._yaw)
+        self._pitch = util.CHASSIS_PITCH_CHECKER.proto2val(self._pitch)
+        self._roll = util.CHASSIS_ROLL_CHECKER.proto2val(self._roll)
+
+class ImuSubject(dds.Subject):
+    name = dds.DDS_IMU
+    uid = dds.SUB_UID_MAP[name]
+    type = dds.DDS_SUB_TYPE_PERIOD
+
+    def __init__(self):
+        self._acc_x = 0
+        self._acc_y = 0
+        self._acc_z = 0
+        self._gyro_x = 0
+        self._gyro_y = 0
+        self._gyro_z = 0
+
+    def imu_info(self):
+        return self._acc_x, self._acc_y, self._acc_z, self._gyro_x, self._gyro_y, self._gyro_z
+
+    def data_info(self):
+        return self._acc_x, self._acc_y, self._acc_z, self._gyro_x, self._gyro_y, self._gyro_z
+
+    def decode(self, buf):
+        self._acc_x, self._acc_y, self._acc_z, self._gyro_x, self._gyro_y, self._gyro_z = struct.unpack('<ffffff', buf)
+        self._acc_x = util.CHASSIS_ACC_CHECKER.proto2val(self._acc_x)
+        self._acc_y = util.CHASSIS_ACC_CHECKER.proto2val(self._acc_y)
+        self._acc_z = util.CHASSIS_ACC_CHECKER.proto2val(self._acc_z)
+        self._gyro_x = util.CHASSIS_GYRO_CHECKER.proto2val(self._gyro_x)
+        self._gyro_y = util.CHASSIS_GYRO_CHECKER.proto2val(self._gyro_y)
+        self._gyro_z = util.CHASSIS_GYRO_CHECKER.proto2val(self._gyro_z)
+
+class SaStatusSubject(dds.Subject):
+    name = dds.DDS_SA_STATUS
+    uid = dds.SUB_UID_MAP[name]
+    type = dds.DDS_SUB_TYPE_PERIOD
+
+    def __init__(self):
+        self._static_flag = 0
+        self._up_hill = 0
+        self._down_hill = 0
+        self._on_slope = 0
+        self._is_pick_up = 0
+        self._slip_flag = 0
+        self._impact_x = 0
+        self._impact_y = 0
+        self._impact_z = 0
+        self._roll_over = 0
+        self._hill_static = 0
+        self.resv = 0
+
+    def sa_status(self):
+        return self._static_flag, \
+               self._up_hill, \
+               self._down_hill, \
+               self._on_slope, \
+               self._is_pick_up, \
+               self._slip_flag, \
+               self._impact_x, \
+               self._impact_y, \
+               self._impact_z, \
+               self._roll_over, \
+               self._hill_static
+
+    def data_info(self):
+        return self._static_flag, \
+               self._up_hill, \
+               self._down_hill, \
+               self._on_slope, \
+               self._is_pick_up, \
+               self._slip_flag, \
+               self._impact_x, \
+               self._impact_y, \
+               self._impact_z, \
+               self._roll_over, \
+               self._hill_static
+
+    def decode(self, buf):
+        self._static_flag = buf[0] & 0x01
+        self._up_hill = (buf[0] >> 1) & 0x01
+        self._down_hill = (buf[0] >> 2) & 0x01
+        self._on_slope = (buf[0] >> 3) & 0x01
+        self._is_pick_up = (buf[0] >> 4) & 0x01
+        self._slip_flag = (buf[0] >> 5) & 0x01
+        self._impact_x = (buf[0] >> 6) & 0x01
+        self._impact_y = (buf[0] >> 7) & 0x01
+        self._impact_z = (buf[1] >> 0) & 0x01
+        self._roll_over = (buf[1] >> 1) & 0x01
+        self._hill_static = (buf[1] >> 2) & 0x01
 
 class Chassis(module.Module):
     _host = protocol.host2byte(3, 6)
@@ -263,25 +368,119 @@ class Chassis(module.Module):
         return action
     
     # Data Subscription Interface
-    # def sub_position(self, cs=0, freq=5, callback=None, *args, **kw):
-    #     """ Subscribe to chassis position data
+    def sub_position(self, cs=0, freq=5, callback=None, *args, **kw):
+        """ Subscribe to chassis position data
 
-    #     :param cs: int: [0, 1] Coordinate system selection for chassis position:
-    #                     0 = relative to current robot position
-    #                     1 = relative to initial (power-on) position
+        :param cs: int: [0, 1] Coordinate system selection for chassis position:
+                        0 = relative to current robot position
+                        1 = relative to initial (power-on) position
 
-    #     :param freq: enum: (1, 5, 10, 20, 50) Frequency of data updates, in Hz
+        :param freq: enum: (1, 5, 10, 20, 50) Frequency of data updates, in Hz
 
-    #     :param callback: Function to be called when data is received. Returns a tuple (x, y, z):
-    #                     :x: Distance along the x-axis, in meters
-    #                     :y: Distance along the y-axis, in meters
-    #                     :z: Distance along the z-axis (rotation or height depending on context), in meters
+        :param callback: Function to be called when data is received. Returns a tuple (x, y, z):
+                        :x: Distance along the x-axis, in meters
+                        :y: Distance along the y-axis, in meters
+                        :z: Distance along the z-axis (rotation or height depending on context), in meters
 
-    #     :param args: Additional arguments for the callback
-    #     :param kw: Keyword arguments for the callback
-    #     :return: bool: Whether the subscription was successfully registered
-    #     """
-    #     sub = self._robot.dds # property dds on robot
-    #     subject = PositionSubject(cs)
-    #     subject.freq = freq
-    #     return sub.add_subject_info(subject, callback, args, kw)
+        :param args: Additional arguments for the callback
+        :param kw: Keyword arguments for the callback
+        :return: bool: Whether the subscription was successfully registered
+        """
+        sub = self._robot.dds # property dds on robot
+        subject = PositionSubject(cs)
+        subject.freq = freq
+        return sub.add_subject_info(subject, callback, args, kw)
+
+    def unsub_position(self):
+        """Unsubscribe from chassis position information
+
+        :return: bool: The result of unsubscribing from the data
+        """
+        sub_dds = self._robot.dds
+        return sub_dds.del_subject_info(dds.DDS_POSITION)
+
+    def sub_attitude(self, freq=5, callback=None, *args, **kw):
+        """Subscribe to chassis attitude information
+
+        :param freq: enum: (1, 5, 10, 20, 50) Set the push frequency of the subscribed data in Hz
+        :param callback: Callback function that returns the data (yaw, pitch, roll):
+
+                        :yaw: Yaw angle of the attitude
+                        :pitch: Pitch angle of the attitude
+                        :roll: Roll angle of the attitude
+
+        :param args: Variable arguments
+        :param kw: Keyword arguments
+        :return: bool: Result of the data subscription
+        """
+        sub = self._robot.dds
+        subject = AttiInfoSubject()
+        subject.freq = freq
+        return sub.add_subject_info(subject, callback, args, kw)
+    
+    def unsub_attitude(self):
+        """Unsubscribe from chassis attitude information
+
+        :return: bool: The result of unsubscribing from the data
+        """
+        sub_dds = self._robot.dds
+        return sub_dds.del_subject_info(dds.DDS_ATTITUDE)
+    
+    def sub_status(self, freq=5, callback=None, *args, **kw):
+        """ Subscribe to chassis status information
+
+        :param freq: enum: (1, 5, 10, 20, 50), sets the push frequency of subscribed data, in Hz
+        :param callback: Callback function, returns data (static_flag, up_hill, down_hill, on_slope, is_pickup, slip_flag, \
+        impact_x, impact_y, impact_z, roll_over, hill_static):
+
+                        :static_flag: Standard status flag
+                        :up_hill: Vehicle is going uphill
+                        :down_hill: Vehicle is going downhill
+                        :on_slope: Vehicle is on a slope
+                        :is_pickup: Vehicle is in pickup (lifted) state
+                        :slip_flag: Vehicle is slipping
+                        :impact_x: Impact detected on X-axis
+                        :impact_y: Impact detected on Y-axis
+                        :impact_z: Impact detected on Z-axis
+                        :roll_over: Vehicle has rolled over
+                        :hill_static: Vehicle is stationary on a slope
+
+        :param args: Variable positional arguments
+        :param kw: Keyword arguments
+        :return: bool: Result of data subscription
+        """
+        sub = self._robot.dds
+        subject = SaStatusSubject()
+        subject.freq = freq
+        return sub.add_subject_info(subject, callback, args, kw)
+    
+    def unsub_status(self):
+        """ Unsubscribe from chassis status information
+
+        :return: bool: Result of unsubscribing from the data
+        """
+        sub_dds = self._robot.dds
+        return sub_dds.del_subject_info(dds.DDS_SA_STATUS)
+
+    def sub_imu(self, freq=5, callback=None, *args, **kw):
+        """ Subscribe to chassis IMU gyroscope information
+
+        :param freq: enum: (1, 5, 10, 20, 50), sets the push frequency of subscribed data, in Hz
+        :param callback: Callback function, returns data (acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z):
+
+                        :acc_x: Acceleration on the X-axis
+                        :acc_y: Acceleration on the Y-axis
+                        :acc_z: Acceleration on the Z-axis
+                        :gyro_x: Angular velocity on the X-axis
+                        :gyro_y: Angular velocity on the Y-axis
+                        :gyro_z: Angular velocity on the Z-axis
+
+        :param args: Variable positional arguments
+        :param kw: Keyword arguments
+        :return: bool: Result of data subscription
+        """
+
+        sub_dds = self._robot.dds
+        subject = ImuSubject()
+        subject.freq = freq
+        return sub_dds.add_subject_info(subject, callback, args, kw)

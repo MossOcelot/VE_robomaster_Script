@@ -1,3 +1,4 @@
+import re
 import threading
 
 from src.robomaster import protocol
@@ -254,7 +255,6 @@ class ActionDispatcher:
         proto = msg.get_proto()
         if proto is None:
             return
-
         action = None
         found_proto = False
         found_action = False
@@ -273,6 +273,7 @@ class ActionDispatcher:
                 logger.warning("ActionDispatcher: in_progress action is None")
         self._in_progress_mutex.release()
 
+        
         if found_proto:
             if proto._retcode == 0:
                 if proto._accept == 0:
@@ -284,14 +285,14 @@ class ActionDispatcher:
             else:
                 action._changeto_state(ACTION_FAILED)
             logger.debug("ActionDispatcher, found_proto, action:{0}".format(action))
-
+        
         if found_action:
             if isinstance(action, TextAction):
                 logger.debug("ActionDispatcher, found text action, and will update_from_push action:{0}".format(action))
                 if action.is_running:
                     action.update_from_push(proto)
                 return
-
+            
             if proto._action_id == action._action_id:
                 logger.debug("ActionDispatcher, found action, and will update_from_push action:{0}".format(action))
                 if action.is_running:
@@ -330,6 +331,7 @@ class ActionDispatcher:
         action._on_state_changed = self._on_action_state_changed
 
         self._client.send_msg(action_msg)
+
         if isinstance(action, TextAction):
             action._changeto_state(ACTION_STARTED)
         logger.info("ActionDispatcher: send_action, action:{0}".format(action))

@@ -298,7 +298,7 @@ def decode_msg(buff, protocol="v1"):
             logger.info("decode_msg, recv buf is not enouph.")
             return None, buff
         if buff[0] != 0x55:
-            logger.warning("decode_msg, magic number is invalid.")
+            logger.warning("decode_msg, magic number is inv   alid.")
             return None, buff
         if algo.crc8_calc(buff[0:3]) != buff[3]:
             logger.warning("decode_msg, crc header check failed.")

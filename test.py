@@ -2,41 +2,21 @@ import time
 from src.robomaster import robot
 
 
+def sub_imu_info_handler(imu_info):
+    acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z = imu_info
+    print("chassis imu: acc_x:{0}, acc_y:{1}, acc_z:{2}, gyro_x:{3}, gyro_y:{4}, gyro_z:{5}".format(
+        acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z))
+
 if __name__ == '__main__':
     ep_robot = robot.Robot()
-    ep_robot.initialize(conn_type="local_env")
+    ep_robot.initialize(conn_type="ap")
 
     ep_chassis = ep_robot.chassis
 
-    x_val = 0.5
-    y_val = 0.3
-    z_val = 30
-
-    # Move forward for 3 seconds
-    ep_chassis.drive_speed(x=x_val, y=0, z=0, timeout=5)
+    # 订阅底盘IMU信息
+    ep_chassis.sub_imu(freq=5, callback=sub_imu_info_handler)
     time.sleep(3)
-
-    # Move backward for 3 seconds
-    ep_chassis.drive_speed(x=-x_val, y=0, z=0, timeout=5)
-    time.sleep(3)
-
-    # Move left for 3 seconds
-    ep_chassis.drive_speed(x=0, y=-y_val, z=0, timeout=5) # left
-    time.sleep(3)
-
-    # Move right for 3 seconds
-    ep_chassis.drive_speed(x=0, y=y_val, z=0, timeout=5) # right
-    time.sleep(3)
-
-    # Turn left for 3 seconds
-    ep_chassis.drive_speed(x=0, y=0, z=-z_val, timeout=5) # left rotate
-    time.sleep(3)
-
-    # Turn right for 3 seconds
-    ep_chassis.drive_speed(x=0, y=0, z=z_val, timeout=5) # right rotate
-    time.sleep(3)
-
-    # Stop mecanum wheel movement
-    ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5) # stop
+    ep_chassis.unsub_imu()
 
     ep_robot.close()
+

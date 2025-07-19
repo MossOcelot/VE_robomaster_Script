@@ -93,5 +93,12 @@ CHASSIS_POS_Y_SUB_CHECKER = UnitChecker('chassis pos y sub', default=0, start=No
 CHASSIS_POS_Z_SUB_CHECKER = UnitChecker('chassis pos z sub', default=0, start=None, end=None, step=0.1, decimal=2,
                                         scale=10)
 
+CHASSIS_PITCH_CHECKER = UnitChecker('chassis pitch', default=0, start=-180, end=180, step=0.1, decimal=2, scale=1)
+CHASSIS_YAW_CHECKER = UnitChecker('chassis yaw', default=0, start=-180, end=180, step=0.1, decimal=2, scale=1)
+CHASSIS_ROLL_CHECKER = UnitChecker('chassis roll', default=0, start=-180, end=180, step=0.1, decimal=2, scale=1)
+
+CHASSIS_ACC_CHECKER = UnitChecker('chassis acc', default=0, start=None, end=None, step=None, decimal=5)
+CHASSIS_GYRO_CHECKER = UnitChecker('chassis gyro', default=0, start=None, end=None, step=None, decimal=5)
+
 PWM_VALUE_CHECKER = UnitChecker('pwm value', default=0, start=0, end=50000, step=1, decimal=0)
 

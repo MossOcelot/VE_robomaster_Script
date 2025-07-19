@@ -103,6 +103,7 @@ class Robot(RobotBase):
         _dds.start()
         
         self._modules[_chassis.__class__.__name__] = _chassis
+        self._modules[_dds.__class__.__name__] = _dds
 
     def get_module(self, name):
         return self._modules[name]

@@ -10,10 +10,16 @@ from concurrent.futures import ThreadPoolExecutor
 SDK_FIRST_DDS_ID = 20
 SDK_LAST_DDS_ID = 225
 
+DDS_ATTITUDE = "attitude"
+DDS_IMU = "imu"
 DDS_POSITION = "position"
+DDS_SA_STATUS = "sa_status"
 
 SUB_UID_MAP = {
+    DDS_ATTITUDE: 0x000200096b986306,
     DDS_POSITION: 0x00020009eeb7cece,
+    DDS_SA_STATUS: 0x000200094a2c6d55,
+    DDS_IMU: 0x00020009a7985b8d,
 }
 
 DDS_SUB_TYPE_EVENT = 1
@@ -70,7 +76,7 @@ class Subject(metaclass=_AutoRegisterSubject):
 class SubHandler(collections.namedtuple("SubHandler", ("obj subject f"))):
     __slots__ = ()
 
-class Subcriber(module.Module):
+class Subscriber(module.Module):
     _host = protocol.host2byte(9, 0)
     _sub_msg_id = SDK_FIRST_DDS_ID
 
@@ -113,7 +119,7 @@ class Subcriber(module.Module):
     def _msg_recv(cls, self, msg):
         for cmd_set, cmd_id in list(dds_cmd_filter):
             if msg.cmdset == cmd_set and msg.cmdid == cmd_id:
-                self._msg_queue.put(msg)
+                 self._msg_queue.put(msg)
 
     def _dispatch_task(self):
         self._dispatcher_running = True
@@ -132,12 +138,15 @@ class Subcriber(module.Module):
                 if proto is None:
                     logger.warning("Subscriber: _publish, msg.get_proto None, msg:{0}".format(msg))
                     continue
+                # logger.debug("handler type: {0}, DDS_SUB_TYPE_PERIOD: {1}".format(handler.subject.type, DDS_SUB_TYPE_PERIOD))
                 if handler.subject.type == DDS_SUB_TYPE_PERIOD and\
                         msg.cmdset == 0x48 and msg.cmdid == 0x08:
                     logger.debug("Subscriber: _publish: msg_id:{0}, subject_id:{1}".format(proto._msg_id,
                                                                                            handler.subject._subject_id))
                     if proto._msg_id == handler.subject._subject_id:
+                        logger.debug("test test test")
                         handler.subject.decode(proto._data_buf)
+                        logger.debug("close close")
                         if handler.subject._task is None:
                             handler.subject._task = self.excutor.submit(handler.subject.exec)
                         if handler.subject._task.done() is True:
@@ -173,6 +182,8 @@ class Subcriber(module.Module):
         self._publisher[subject.name] = handler
         self._dds_mutex.release()
         self.add_cmd_filter(subject.cmdset, subject.cmdid)
+        logger.debug("Subscriber: add_subject_event_info, subject:{0}, cmdset:{1}, cmdid:{2}".format(
+            subject.name, subject.cmdset, subject.cmdid))
         return True
     
     def del_subject_event_info(self, subject):
@@ -206,6 +217,8 @@ class Subcriber(module.Module):
         self._publisher[subject.name] = handler
         self._dds_mutex.release()
 
+        logger.debug(f"publisher: {self._publisher.keys()}")
+
         # Construct and send a protocol message to initiate the subscription
         proto = protocol.ProtoAddSubMsg()
         proto._node_id = self.client.hostbyte
@@ -215,7 +228,7 @@ class Subcriber(module.Module):
         subject._subject_id = proto._msg_id
         subject._task = None
         proto._sub_uid_list.append(subject.uid)
-
+        logger.debug("subscriber")
         return self._send_sync_proto(proto, protocol.host2byte(9, 0))
 
     def del_subject_info(self, subject_name):
@@ -226,24 +239,17 @@ class Subcriber(module.Module):
         :return: bool: Result of the unsubscription operation
         """
         logger.debug("Subscriber: del_subject_info: name:{0}, self._publisher:{1}".format(subject_name,
-                    self._publisher))
-
+                     self._publisher))
         if subject_name in self._publisher:
             subject_id = self._publisher[subject_name].subject._subject_id
-
-            # Cancel the task if it is still running
             if self._publisher[subject_name].subject._task.done() is False:
                 self._publisher[subject_name].subject._task.cancel()
-
-            # Remove the subscription handler from the registry
             self._dds_mutex.acquire()
             del self._publisher[subject_name]
             self._dds_mutex.release()
-
-            # Send protocol message to notify the remote end to stop publishing
             proto = protocol.ProtoDelMsg()
             proto._msg_id = subject_id
             proto._node_id = self.client.hostbyte
             return self._send_sync_proto(proto, protocol.host2byte(9, 0))
         else:
-            logger.warning("Subscriber: failed to delete subject:", subject_name)
+            logger.warning("Subscriber: fail to del_subject_info", subject_name)

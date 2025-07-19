@@ -46,6 +46,7 @@ class BaseConnection:
         try:
             if self._sock:
                 data, host = self._sock.recvfrom(2048)
+                logger.debug("Connection: recv, length data:{0}, host:{1}".format(len(data), host))
         except Exception as e:
             logger.warning("Connection: recv, exception:{0}".format(e))
             raise
